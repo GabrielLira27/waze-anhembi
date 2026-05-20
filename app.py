@@ -90,7 +90,7 @@ def busca_a_estrela(problema):
             if vizinho not in explorado:
                 h_filho = problema.calcular_heuristica(vizinho)
                 filho = No(vizinho, no_atual, vizinho, custo_g, h_filho)
-                heapq.heappush(borda, child=filho)
+                heapq.heappush(borda, filho)
     return None, nos_expandidos
 
 def reconstruir_caminho(no):
