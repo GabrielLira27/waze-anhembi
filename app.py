@@ -1,6 +1,7 @@
 import streamlit as st
 import heapq
 import pandas as pd
+import pydeck as pdk
 
 # --- 1. CLASSE NÓ ---
 class No:
@@ -15,13 +16,13 @@ class No:
     def __lt__(self, outro):
         return self.f < outro.f
 
-# --- 2. CLASSE PROBLEMA DINÂMICO ---
+# --- 2. CLASSE PROBLEMA GEOGRÁFICO ---
 class ProblemaAnhembiGeografico:
     def __init__(self, inicial, objetivo):
         self.estado_inicial = inicial
         self.estado_objetivo = objetivo
         
-        # Grafo de conexões (Distâncias aproximadas de trânsito em km)
+        # Grafo de conexões (Distâncias de trânsito em km)
         self.conexoes = {
             'Anhembi_Paulista': {'Shopping_C3': 0.2, 'MASP': 0.5, 'Theatro_Municipal': 4.0},
             'Shopping_C3': {'Anhembi_Paulista': 0.2, 'Theatro_Municipal': 3.8},
@@ -40,7 +41,7 @@ class ProblemaAnhembiGeografico:
             'Anhembi_Mooca': {'Armarinhos_Fernando': 0.8, 'Estacao_Bras': 2.1}
         }
         
-        # COORDENADAS REAIS DE SÃO PAULO (Latitude, Longitude)
+        # Coordenadas geográficas reais (Latitude, Longitude)
         self.coordenadas_reais = {
             'Anhembi_Paulista': (-23.5568, -46.6625),
             'Shopping_C3': (-23.5560, -46.6618),
@@ -69,11 +70,8 @@ class ProblemaAnhembiGeografico:
         return estado == self.estado_objetivo
 
     def calcular_heuristica(self, estado):
-        # Haversine simplificada ou distância euclidiana direta sobre graus geográficos
-        # Funciona perfeitamente como estimativa em linha reta para distâncias curtas urbanas
         lat1, lon1 = self.coordenadas_reais[estado]
         lat2, lon2 = self.coordenadas_reais[self.estado_objetivo]
-        # Multiplicamos por 111 para converter aproximadamente graus em km
         return (((lat1 - lat2) ** 2) + ((lon1 - lon2) ** 2)) ** 0.5 * 111.0
 
 # --- 3. MOTOR A* ---
@@ -112,11 +110,11 @@ def reconstruir_caminho(no):
         no = no.pai
     return caminho[::-1]
 
-# --- 4. INTERFACE GRÁFICA (Streamlit) ---
+# --- 4. INTERFACE GRÁFICA (Streamlit + Pydeck) ---
 st.set_page_config(page_title="Google Maps Protótipo IA", page_icon="🗺️", layout="wide")
 
-st.title("🗺️ Protótipo Google Maps - Sistema de Roteamento $A^*$")
-st.write("Filtre o trajeto do veículo utilizando dados geográficos reais das vias de São Paulo.")
+st.title("🗺️ Protótipo Google Maps Avançado - Roteamento $A^*$")
+st.write("Visualização de percurso sequencial e alfinetes customizados em tempo real.")
 
 locais = [
     'Anhembi_Paulista', 'Shopping_C3', 'MASP', 'Theatro_Municipal', 
@@ -128,37 +126,88 @@ locais = [
 col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.subheader("Configuração da Viagem")
-    origem = st.selectbox("📍 Ponto de Partida:", locais, index=0)
-    destino = st.selectbox("🏁 Destino Final:", locais, index=14)
-    calcular = st.button("🚀 Gerar Mapa e Percurso", use_container_width=True)
+    st.subheader("Configuração do Trajeto")
+    origem = st.selectbox("📍 Ponto de Origem:", locais, index=0)
+    destino = st.selectbox("🏁 Ponto de Destino:", locais, index=14)
+    calcular = st.button("🚀 Calcular Rota Otimizada", use_container_width=True)
 
 with col2:
     if calcular:
-        if origem == destino:
-            st.warning("Você já está no local escolhido! Altere a origem ou o destino.")
+        if origem == destination:
+            st.warning("A origem e o destino são iguais, escolha locais diferentes!")
         else:
             waze_sp = ProblemaAnhembiGeografico(origem, destino)
-            rota, esforco = busca_a_estrela(waze_sp)
+            rota, esforc = busca_a_estrela(waze_sp)
             
             if rota:
                 custo_total = rota[-1][1]
-                st.success(f"**Rota Otimizada Calculada!** Distância total: **{custo_total:.2f} km**")
+                st.success(f"**Sucesso!** Rota calculada pelo A*: **{custo_total:.2f} km**")
                 
-                # --- CONSTRUÇÃO DO MAPA VISUAL ---
-                dados_mapa = []
-                for ponto, _ in rota:
+                # --- PROCESSAMENTO DOS ALFINETES COLORIDOS ---
+                dados_pontos = []
+                coordenadas_linha = []
+                
+                for i, (ponto, _) in enumerate(rota):
                     lat, lon = waze_sp.coordenadas_reais[ponto]
-                    dados_mapa.append({"name": ponto, "latitude": lat, "longitude": lon})
+                    coordenadas_linha.append([lon, lat])  # Pydeck usa [Longitude, Latitude]
+                    
+                    # Define a cor baseada na posição do nó
+                    if i == 0:
+                        cor_rgb = [46, 204, 113]      # Verde (Origem)
+                    elif i == len(rota) - 1:
+                        cor_rgb = [231, 76, 60]       # Vermelho (Destino)
+                    else:
+                        cor_rgb = [52, 152, 219]      # Azul (Caminho do meio)
+                        
+                    dados_pontos.append({
+                        "name": ponto, 
+                        "latitude": lat, 
+                        "longitude": lon, 
+                        "color": cor_rgb
+                    })
                 
-                df_rota = pd.DataFrame(dados_mapa)
+                df_pontos = pd.DataFrame(dados_pontos)
                 
-                # Renderiza o mapa interativo na tela com os pontos do trajeto
-                st.map(df_rota, zoom=13, use_container_width=True)
+                # --- PROCESSAMENTO DA LINHA SEQUENCIAL ---
+                df_linha = pd.DataFrame([{"path": coordenadas_linha}])
                 
-                # Histórico textual logo abaixo
-                st.subheader("📋 Resumo do Itinerário")
-                caminho_formatado = " ➡️ ".join([f"`{p[0]}`" for p in rota])
-                st.write(caminho_formatado)
+                # Camada 1: Desenhar o traçado/linha contínua
+                camada_linha = pdk.Layer(
+                    "PathLayer",
+                    df_linha,
+                    get_path="path",
+                    width_min_pixels=4,
+                    get_color=[44, 62, 80], # Cor escura para destacar a rota
+                    pickable=True
+                )
+                
+                # Camada 2: Desenhar os marcadores redondos coloridos
+                camada_pontos = pdk.Layer(
+                    "ScatterplotLayer",
+                    df_pontos,
+                    get_position="[longitude, latitude]",
+                    get_radius=120,
+                    get_fill_color="color",
+                    pickable=True
+                )
+                
+                # Configuração da câmera focando no primeiro ponto
+                lat_centro, lon_centro = waze_sp.coordenadas_reais[origem]
+                estado_visao = pdk.ViewState(
+                    latitude=lat_centro,
+                    longitude=lon_centro,
+                    zoom=13,
+                    pitch=30
+                )
+                
+                # Renderiza o mapa avançado com as duas camadas juntas
+                st.pydeck_chart(pdk.Deck(
+                    layers=[camada_linha, camada_pontos],
+                    initial_view_state=estado_visao,
+                    tooltip={"text": "Local: {name}"}
+                ))
+                
+                st.subheader("📋 Sequência de Navegação:")
+                st.write(" ➡️ ".join([f"`{p[0]}`" for p in rota]))
             else:
-                st.error("Nenhum trajeto foi encontrado conectando as duas localidades no grafo atual.")
+                st.error("Infelizmente o algoritmo não encontrou conexão direta para o trajeto desejado.")
