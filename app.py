@@ -133,7 +133,7 @@ with col1:
 
 with col2:
     if calcular:
-        if origem == destination:
+        if origem == destino:
             st.warning("A origem e o destino são iguais, escolha locais diferentes!")
         else:
             waze_sp = ProblemaAnhembiGeografico(origem, destino)
