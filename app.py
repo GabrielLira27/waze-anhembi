@@ -1,5 +1,6 @@
 import streamlit as st
 import heapq
+import pandas as pd
 
 # --- 1. CLASSE NÓ ---
 class No:
@@ -15,12 +16,12 @@ class No:
         return self.f < outro.f
 
 # --- 2. CLASSE PROBLEMA DINÂMICO ---
-class ProblemaAnhembiDinamico:
+class ProblemaAnhembiGeografico:
     def __init__(self, inicial, objetivo):
         self.estado_inicial = inicial
         self.estado_objetivo = objetivo
         
-        # O grafo completo com os seus pontos turísticos de SP
+        # Grafo de conexões (Distâncias aproximadas de trânsito em km)
         self.conexoes = {
             'Anhembi_Paulista': {'Shopping_C3': 0.2, 'MASP': 0.5, 'Theatro_Municipal': 4.0},
             'Shopping_C3': {'Anhembi_Paulista': 0.2, 'Theatro_Municipal': 3.8},
@@ -39,14 +40,23 @@ class ProblemaAnhembiDinamico:
             'Anhembi_Mooca': {'Armarinhos_Fernando': 0.8, 'Estacao_Bras': 2.1}
         }
         
-        # Como o destino agora muda na interface, criamos uma Heurística Geral aproximada
-        # Representa a distância estimada em linha reta entre os pontos
-        self.coordenadas_estimadas = {
-            'Anhembi_Paulista': (0, 0), 'Shopping_C3': (0, 0.2), 'MASP': (-0.3, 0),
-            'Theatro_Municipal': (2, 2), 'Estacao_da_Luz': (3, 1.5), 'Liberdade': (1.8, 1),
-            'Praca_da_Se': (2.2, 1.8), 'Catedral_da_Se': (2.3, 1.8), 'Patio_do_Colegio': (2.4, 2),
-            'Mercadao': (2.8, 2.3), 'Parque_Dom_Pedro': (2.7, 1.5), 'Estacao_Bras': (3.5, 2.5),
-            'Museu_Imigracao': (4, 3), 'Armarinhos_Fernando': (4.5, 3.2), 'Anhembi_Mooca': (5, 3.5)
+        # COORDENADAS REAIS DE SÃO PAULO (Latitude, Longitude)
+        self.coordenadas_reais = {
+            'Anhembi_Paulista': (-23.5568, -46.6625),
+            'Shopping_C3': (-23.5560, -46.6618),
+            'MASP': (-23.5615, -46.6559),
+            'Theatro_Municipal': (-23.5453, -46.6388),
+            'Estacao_da_Luz': (-23.5364, -46.6340),
+            'Liberdade': (-23.5552, -46.6338),
+            'Praca_da_Se': (-23.5505, -46.6333),
+            'Catedral_da_Se': (-23.5512, -46.6343),
+            'Patio_do_Colegio': (-23.5488, -46.6329),
+            'Mercadao': (-23.5417, -46.6293),
+            'Parque_Dom_Pedro': (-23.5447, -46.6284),
+            'Estacao_Bras': (-23.5475, -46.6163),
+            'Museu_Imigracao': (-23.5492, -46.6125),
+            'Armarinhos_Fernando': (-23.5539, -46.6069),
+            'Anhembi_Mooca': (-23.5550, -46.6105)
         }
 
     def acoes(self, estado):
@@ -59,10 +69,12 @@ class ProblemaAnhembiDinamico:
         return estado == self.estado_objetivo
 
     def calcular_heuristica(self, estado):
-        # Calcula a distância Euclidiana simples entre o ponto atual e o destino final escolhido
-        p1 = self.coordenadas_estimadas[estado]
-        p2 = self.coordenadas_estimadas[self.estado_objetivo]
-        return ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)**0.5
+        # Haversine simplificada ou distância euclidiana direta sobre graus geográficos
+        # Funciona perfeitamente como estimativa em linha reta para distâncias curtas urbanas
+        lat1, lon1 = self.coordenadas_reais[estado]
+        lat2, lon2 = self.coordenadas_reais[self.estado_objetivo]
+        # Multiplicamos por 111 para converter aproximadamente graus em km
+        return (((lat1 - lat2) ** 2) + ((lon1 - lon2) ** 2)) ** 0.5 * 111.0
 
 # --- 3. MOTOR A* ---
 def busca_a_estrela(problema):
@@ -101,12 +113,11 @@ def reconstruir_caminho(no):
     return caminho[::-1]
 
 # --- 4. INTERFACE GRÁFICA (Streamlit) ---
-st.set_page_config(page_title="Waze Real-Time Inteligente", page_icon="🗺️")
+st.set_page_config(page_title="Google Maps Protótipo IA", page_icon="🗺️", layout="wide")
 
-st.title("🗺️ Protótipo Google Maps - Roteamento IA")
-st.write("Selecione os pontos do campus e locais de SP para rodar a Busca $A^*$ em tempo real.")
+st.title("🗺️ Protótipo Google Maps - Sistema de Roteamento $A^*$")
+st.write("Filtre o trajeto do veículo utilizando dados geográficos reais das vias de São Paulo.")
 
-# Lista de locais disponíveis no seu sistema
 locais = [
     'Anhembi_Paulista', 'Shopping_C3', 'MASP', 'Theatro_Municipal', 
     'Estacao_da_Luz', 'Liberdade', 'Praca_da_Se', 'Catedral_da_Se', 
@@ -114,37 +125,40 @@ locais = [
     'Museu_Imigracao', 'Armarinhos_Fernando', 'Anhembi_Mooca'
 ]
 
-# Caixas de Seleção Estilizadas
-col1, col2 = st.columns(2)
-with col1:
-    origem = st.selectbox("📍 Escolha o ponto de partida:", locais, index=0)
-with col2:
-    destino = st.selectbox("🏁 Escolha o destino final:", locais, index=14)
+col1, col2 = st.columns([1, 2])
 
-if st.button("🚀 Calcular Melhor Rota de Carro", use_container_width=True):
-    if origem == destino:
-        st.warning("Mano, você já está no destino! Escolha pontos diferentes. 😅")
-    else:
-        # Inicializa e roda o problema com as escolhas da tela
-        waze_sp = ProblemaAnhembiDinamico(origem, destino)
-        rota, esforco = busca_a_estrela(waze_sp)
-        
-        if rota:
-            st.success("🎉 Rota excelente encontrada pelo algoritmo!")
-            
-            # Caixa com o resumo do trajeto
-            custo_total = rota[-1][1]
-            st.metric(label="Distância Total da Viagem", value=f"{custo_total:.2f} km")
-            st.metric(label="Esforço de Processamento (Nós Expandidos)", value=f"{esforco} locais analisados")
-            
-            # Mostra o passo a passo bonitinho
-            st.subheader("📋 Instruções do Trajeto:")
-            for i, (ponto, km) in enumerate(rota):
-                if i == 0:
-                    st.write(f"➡️ **Parta de:** `{ponto}`")
-                elif i == len(rota) - 1:
-                    st.write(f"🏁 **Chegue em:** `{ponto}` (Distância acumulada: *{km:.2f} km*)")
-                else:
-                    st.write(f"📍 Siga para: `{ponto}` (+{km:.2f} km)")
+with col1:
+    st.subheader("Configuração da Viagem")
+    origem = st.selectbox("📍 Ponto de Partida:", locais, index=0)
+    destino = st.selectbox("🏁 Destino Final:", locais, index=14)
+    calcular = st.button("🚀 Gerar Mapa e Percurso", use_container_width=True)
+
+with col2:
+    if calcular:
+        if origem == destino:
+            st.warning("Você já está no local escolhido! Altere a origem ou o destino.")
         else:
-            st.error("Desculpe, meu chapa. Não há caminhos disponíveis entre esses pontos no momento.")
+            waze_sp = ProblemaAnhembiGeografico(origem, destino)
+            rota, esforco = busca_a_estrela(waze_sp)
+            
+            if rota:
+                custo_total = rota[-1][1]
+                st.success(f"**Rota Otimizada Calculada!** Distância total: **{custo_total:.2f} km**")
+                
+                # --- CONSTRUÇÃO DO MAPA VISUAL ---
+                dados_mapa = []
+                for ponto, _ in rota:
+                    lat, lon = waze_sp.coordenadas_reais[ponto]
+                    dados_mapa.append({"name": ponto, "latitude": lat, "longitude": lon})
+                
+                df_rota = pd.DataFrame(dados_mapa)
+                
+                # Renderiza o mapa interativo na tela com os pontos do trajeto
+                st.map(df_rota, zoom=13, use_container_width=True)
+                
+                # Histórico textual logo abaixo
+                st.subheader("📋 Resumo do Itinerário")
+                caminho_formatado = " ➡️ ".join([f"`{p[0]}`" for p in rota])
+                st.write(caminho_formatado)
+            else:
+                st.error("Nenhum trajeto foi encontrado conectando as duas localidades no grafo atual.")
