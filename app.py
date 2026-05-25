@@ -159,9 +159,19 @@ elif pagina == "⚡ Inteligência Preditiva (Crypto)":
     with st.spinner(f"📡 Buscando dados históricos em tempo real do {moeda} no Yahoo Finance..."):
         # Baixa os dados em tempo real direto pela nuvem
         df = yf.download(ativos[moeda], period='max', progress=False)
+        
+        # --- CORREÇÃO DO BUG DO INDEX/DATE ---
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
+            
+        # Força o reset do índice de forma segura e renomeia para 'Date' caso mude de nome
         df = df.reset_index()
+        if 'index' in df.columns:
+            df = df.rename(columns={'index': 'Date'})
+        elif 'Date' not in df.columns:
+            # Caso o índice original estivesse sem nome, ele pode ter virado outra coisa
+            df.columns.values[0] = 'Date'
+        # -------------------------------------
         
         # Engenharia de Atributos que ele montou
         df['SMA_7'] = df['Close'].rolling(window=7).mean()
